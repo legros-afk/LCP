@@ -128,11 +128,13 @@ export class GameScene extends Phaser.Scene {
           applyPlayerChat(this.person.needs);
           this.person.showThought(this.pickChatResponse(), 4000);
           break;
-        case 'bell':
+        case 'bell': {
+          const playerName = this.game.registry.get('personName') as string ?? '';
           applyPlayerBell(this.person.needs);
-          this.person.showThought('Oh! Hello there! 👋', 2500);
+          this.person.showThought(playerName ? `Oh! Hi ${playerName}! 👋` : 'Oh! Hello there! 👋', 2500);
           this.person.navigateTo(200, LOWER_WALK_Y);
           break;
+        }
       }
       this.pendingPlayerAction = null;
     }

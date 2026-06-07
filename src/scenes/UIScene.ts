@@ -87,6 +87,14 @@ export class UIScene extends Phaser.Scene {
     this.createButton('🔔 BELL',   780, UI_Y + 20, () => this.gameScene?.triggerBell());
 
     // Wait, the buttons need to fit in 800px. Let me adjust x positions
+    // Person name
+    const name = this.game.registry.get('personName') as string ?? '';
+    this.add.text(624, UI_Y + 6, name.toUpperCase(), {
+      fontSize: '10px',
+      color: '#e8d5b7',
+      fontFamily: 'monospace',
+    }).setOrigin(0.5, 0).setAlpha(0.85);
+
     // Time display
     this.timeText = this.add.text(624, UI_Y + 48, '08:00', {
       fontSize: '14px',

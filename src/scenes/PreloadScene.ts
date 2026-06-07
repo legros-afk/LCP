@@ -8,7 +8,13 @@ export class PreloadScene extends Phaser.Scene {
   }
 
   create(): void {
-    this.scene.start('GameScene');
-    this.scene.launch('UIScene');
+    const savedName = localStorage.getItem('lcp_name');
+    if (savedName) {
+      this.game.registry.set('personName', savedName);
+      this.scene.start('GameScene');
+      this.scene.launch('UIScene');
+    } else {
+      this.scene.start('IntroScene');
+    }
   }
 }
