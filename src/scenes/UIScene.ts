@@ -1,183 +1,160 @@
 import Phaser from 'phaser';
-import { W, H, UI_Y, COLORS } from '../config';
+import { W, H, UI_Y, C } from '../config';
 import type { GameScene } from './GameScene';
 
-const BAR_W = 120;
+const BAR_W = 100;
 const BAR_H = 10;
-const BAR_Y = UI_Y + 22;
+const BAR_Y = UI_Y + 24;
 
-const BARS: { key: keyof ReturnType<GameScene['getNeeds']>; label: string; color: number; x: number }[] = [
-  { key: 'hunger',    label: 'HUNGER',    color: COLORS.hungerBar,    x: 20  },
-  { key: 'happiness', label: 'HAPPY',     color: COLORS.happinessBar, x: 170 },
-  { key: 'energy',    label: 'ENERGY',    color: COLORS.energyBar,    x: 320 },
-  { key: 'hygiene',   label: 'HYGIENE',   color: COLORS.hygieneBar,   x: 470 },
+const BARS: { key: 'hunger' | 'happiness' | 'energy' | 'hygiene'; label: string; color: number; x: number }[] = [
+  { key: 'hunger',    label: 'HUNGER',  color: C.hungerBar,    x: 18  },
+  { key: 'happiness', label: 'HAPPY',   color: C.happinessBar, x: 138 },
+  { key: 'energy',    label: 'ENERGY',  color: C.energyBar,    x: 258 },
+  { key: 'hygiene',   label: 'HYGIENE', color: C.hygieneBar,   x: 378 },
 ];
 
-interface Btn {
-  bg: Phaser.GameObjects.Rectangle;
-  txt: Phaser.GameObjects.Text;
-}
-
 const BEHAVIOR_LABELS: Record<string, string> = {
-  idle:           'Idle',
-  walking:        'Walking...',
-  eating:         'Eating 🍽',
-  sleeping:       'Sleeping 💤',
-  watching_tv:    'Watching TV 📺',
-  using_computer: 'Using computer 💻',
-  reading:        'Reading 📖',
-  showering:      'Showering 🚿',
-  cooking:        'Cooking 🍳',
-  greeting_player:'Hello!',
-  chatting:       'Chatting...',
+  idle:           '...',
+  walking:        'walking',
+  eating:         'eating',
+  sleeping:       'sleeping',
+  watching_tv:    'watching TV',
+  using_computer: 'at the computer',
+  reading:        'reading',
+  showering:      'showering',
+  cooking:        'cooking',
+  greeting_player:'waving hello',
+  chatting:       'chatting',
 };
 
 export class UIScene extends Phaser.Scene {
-  private barGraphics!: Phaser.GameObjects.Graphics;
   private barFills: Phaser.GameObjects.Graphics[] = [];
   private barLabels: Phaser.GameObjects.Text[] = [];
   private timeText!: Phaser.GameObjects.Text;
+  private nameText!: Phaser.GameObjects.Text;
   private statusText!: Phaser.GameObjects.Text;
+  private calEventText!: Phaser.GameObjects.Text;
+  private calBtn!: Phaser.GameObjects.Rectangle;
+  private calBtnText!: Phaser.GameObjects.Text;
   private chatInput!: Phaser.GameObjects.DOMElement;
   private chatVisible = false;
   private gameScene!: GameScene;
-  private roomLabels: Phaser.GameObjects.Text[] = [];
 
   constructor() { super({ key: 'UIScene', active: false }); }
 
   create(): void {
-    // Wait one frame for GameScene to register itself
-    this.time.delayedCall(100, () => {
+    this.time.delayedCall(120, () => {
       this.gameScene = this.game.registry.get('gameScene') as GameScene;
       this.buildUI();
-      this.buildRoomLabels();
     });
   }
 
   private buildUI(): void {
     // Panel background
     const panel = this.add.graphics();
-    panel.fillStyle(COLORS.uiBg, 0.95);
+    panel.fillStyle(C.uiBg, 0.97);
     panel.fillRect(0, UI_Y, W, H - UI_Y);
-    panel.fillStyle(COLORS.uiBorder, 1);
+    panel.fillStyle(C.uiBorder, 1);
     panel.fillRect(0, UI_Y, W, 2);
 
-    this.barGraphics = this.add.graphics();
-
-    // Create bar fills and labels
+    // Bars
     for (let i = 0; i < BARS.length; i++) {
       const bar = BARS[i];
-
-      // Label above bar
-      const lbl = this.add.text(bar.x, BAR_Y - 14, bar.label, {
-        fontSize: '8px',
-        color: '#a0a0a0',
-        fontFamily: 'monospace',
-      }).setOrigin(0, 0);
-      this.barLabels.push(lbl);
-
-      // Bar fill (will be updated every frame)
-      const fill = this.add.graphics();
-      this.barFills.push(fill);
+      this.add.text(bar.x, BAR_Y - 13, bar.label, {
+        fontSize: '7px', color: '#556677', fontFamily: 'monospace',
+      });
+      this.barFills.push(this.add.graphics());
+      this.barLabels.push(this.add.text(bar.x, BAR_Y + BAR_H + 3, '', {
+        fontSize: '7px', color: '#556677', fontFamily: 'monospace',
+      }));
     }
 
-    // Buttons
-    this.createButton('🍞 FEED',   620, UI_Y + 20, () => this.gameScene?.triggerFeed());
-    this.createButton('💬 CHAT',   700, UI_Y + 20, () => this.triggerChat());
-    this.createButton('🔔 BELL',   780, UI_Y + 20, () => this.gameScene?.triggerBell());
+    // Interaction buttons
+    this.makeBtn('FEED',   512, UI_Y + 14, () => this.gameScene?.triggerFeed());
+    this.makeBtn('CHAT',   572, UI_Y + 14, () => this.toggleChat());
+    this.makeBtn('BELL',   632, UI_Y + 14, () => this.gameScene?.triggerBell());
 
-    // Wait, the buttons need to fit in 800px. Let me adjust x positions
-    // Person name
+    // Calendar button (only if client ID configured)
+    const calAvail = this.gameScene?.getCalService().isAvailable;
+    const calBg = this.add.rectangle(512, UI_Y + 50, 150, 18, calAvail ? C.calBtnOk : C.btnBg)
+      .setOrigin(0, 0)
+      .setInteractive({ useHandCursor: calAvail });
+    this.calBtn = calBg;
+    const calLabel = calAvail ? '📅 Connect Calendar' : '📅 Calendar (n/a)';
+    this.calBtnText = this.add.text(587, UI_Y + 59, calLabel, {
+      fontSize: '8px', color: '#aabbcc', fontFamily: 'monospace',
+    }).setOrigin(0.5, 0.5);
+
+    if (calAvail) {
+      calBg.on('pointerover',  () => { calBg.fillColor = C.calBtnOkHover; });
+      calBg.on('pointerout',   () => { calBg.fillColor = C.calBtnOk; });
+      calBg.on('pointerdown',  () => { this.gameScene?.getCalService().requestAccess(); });
+    }
+
+    // Calendar event display
+    this.calEventText = this.add.text(512, UI_Y + 72, '', {
+      fontSize: '8px', color: '#88aacc', fontFamily: 'monospace',
+    });
+
+    // Name
     const name = this.game.registry.get('personName') as string ?? '';
-    this.add.text(624, UI_Y + 6, name.toUpperCase(), {
-      fontSize: '10px',
-      color: '#e8d5b7',
-      fontFamily: 'monospace',
-    }).setOrigin(0.5, 0).setAlpha(0.85);
-
-    // Time display
-    this.timeText = this.add.text(624, UI_Y + 48, '08:00', {
-      fontSize: '14px',
-      color: '#e8d5b7',
-      fontFamily: 'monospace',
+    this.nameText = this.add.text(700, UI_Y + 10, name.toUpperCase(), {
+      fontSize: '11px', color: '#ccddee', fontFamily: 'monospace',
     }).setOrigin(0.5, 0);
 
-    // Status / behavior text
-    this.statusText = this.add.text(624, UI_Y + 66, '', {
-      fontSize: '8px',
-      color: '#7a8a9a',
-      fontFamily: 'monospace',
+    // Time
+    this.timeText = this.add.text(700, UI_Y + 28, '00:00', {
+      fontSize: '16px', color: '#e8d5b7', fontFamily: 'monospace',
     }).setOrigin(0.5, 0);
 
-    // Chat input DOM element (hidden initially)
+    // Status
+    this.statusText = this.add.text(700, UI_Y + 52, '', {
+      fontSize: '8px', color: '#556677', fontFamily: 'monospace',
+    }).setOrigin(0.5, 0);
+
+    // Room labels (drawn over GameScene)
+    const lblStyle = { fontSize: '8px', color: '#7a6a55', fontFamily: 'monospace' };
+    this.add.text(205, 288, 'LIVING ROOM', lblStyle).setOrigin(0.5, 0).setAlpha(0.8);
+    this.add.text(590, 288, 'KITCHEN',     lblStyle).setOrigin(0.5, 0).setAlpha(0.8);
+    this.add.text(200, 32,  'BEDROOM',     lblStyle).setOrigin(0.5, 0).setAlpha(0.8);
+    this.add.text(590, 32,  'BATHROOM',    lblStyle).setOrigin(0.5, 0).setAlpha(0.8);
+
+    // Chat input
     const inputEl = document.createElement('input');
     inputEl.type = 'text';
     inputEl.placeholder = 'Say something...';
-    inputEl.style.cssText = [
-      'width:300px', 'padding:6px 10px', 'background:#1a2a3a',
-      'border:1px solid #3a5a7a', 'color:#e8d5b7', 'font-family:monospace',
-      'font-size:12px', 'outline:none', 'border-radius:3px',
-    ].join(';');
+    inputEl.style.cssText = 'width:300px;padding:5px 10px;background:#0a1a24;border:1px solid #2a4a5a;color:#cce0ee;font-family:monospace;font-size:12px;outline:none;border-radius:2px';
     inputEl.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
-        this.sendChat(inputEl.value);
+        if (inputEl.value.trim()) this.gameScene?.triggerChat();
         inputEl.value = '';
-        this.hideChatInput();
+        this.hideChat();
       }
-      if (e.key === 'Escape') {
-        this.hideChatInput();
-      }
+      if (e.key === 'Escape') this.hideChat();
     });
-    this.chatInput = this.add.dom(W / 2, UI_Y + 55, inputEl).setVisible(false);
+    this.chatInput = this.add.dom(W / 2, UI_Y + 56, inputEl).setVisible(false);
   }
 
-  private createButton(label: string, x: number, y: number, cb: () => void): Btn {
-    const bg = this.add.rectangle(x, y, 68, 22, COLORS.btnBg)
-      .setOrigin(0.5, 0)
-      .setInteractive({ useHandCursor: true });
-    const txt = this.add.text(x, y + 11, label, {
-      fontSize: '9px',
-      color: '#e8d5b7',
-      fontFamily: 'monospace',
+  private makeBtn(label: string, x: number, y: number, cb: () => void): void {
+    const bg = this.add.rectangle(x, y, 54, 22, C.btnBg).setOrigin(0, 0).setInteractive({ useHandCursor: true });
+    this.add.text(x + 27, y + 11, label, {
+      fontSize: '9px', color: '#aabbcc', fontFamily: 'monospace',
     }).setOrigin(0.5, 0.5);
-
-    bg.on('pointerover',  () => { bg.fillColor = COLORS.btnHover; });
-    bg.on('pointerout',   () => { bg.fillColor = COLORS.btnBg; });
-    bg.on('pointerdown',  () => { bg.fillColor = 0x3a4a5a; cb(); });
-    bg.on('pointerup',    () => { bg.fillColor = COLORS.btnHover; });
-    return { bg, txt };
+    bg.on('pointerover',  () => { bg.fillColor = C.btnHover; });
+    bg.on('pointerout',   () => { bg.fillColor = C.btnBg; });
+    bg.on('pointerdown',  () => { bg.fillColor = 0x2a3a44; cb(); });
+    bg.on('pointerup',    () => { bg.fillColor = C.btnHover; });
   }
 
-  private buildRoomLabels(): void {
-    const { LOWER_Y_TOP, UPPER_Y_TOP } = {
-      LOWER_Y_TOP: 285,
-      UPPER_Y_TOP: 30,
-    };
-    const style = { fontSize: '9px', color: '#a09080', fontFamily: 'monospace' };
-    this.roomLabels = [
-      this.add.text(210, LOWER_Y_TOP + 12, 'LIVING ROOM', style).setOrigin(0.5, 0).setAlpha(0.7),
-      this.add.text(590, LOWER_Y_TOP + 12, 'KITCHEN',     style).setOrigin(0.5, 0).setAlpha(0.7),
-      this.add.text(200, UPPER_Y_TOP + 10, 'BEDROOM',     style).setOrigin(0.5, 0).setAlpha(0.7),
-      this.add.text(590, UPPER_Y_TOP + 10, 'BATHROOM',    style).setOrigin(0.5, 0).setAlpha(0.7),
-    ];
-  }
-
-  private triggerChat(): void {
-    if (this.chatVisible) {
-      this.hideChatInput();
-    } else {
+  private toggleChat(): void {
+    if (this.chatVisible) { this.hideChat(); } else {
       this.chatVisible = true;
       this.chatInput.setVisible(true);
       (this.chatInput.node as HTMLInputElement).focus();
     }
   }
 
-  private sendChat(text: string): void {
-    if (!text.trim() || !this.gameScene) return;
-    this.gameScene.triggerChat();
-  }
-
-  private hideChatInput(): void {
+  private hideChat(): void {
     this.chatVisible = false;
     this.chatInput.setVisible(false);
   }
@@ -188,40 +165,42 @@ export class UIScene extends Phaser.Scene {
     const needs = this.gameScene.getNeeds();
     const gt    = this.gameScene.getGameTime();
     const beh   = this.gameScene.getBehavior();
+    const cal   = this.gameScene.getCalService();
 
-    // Update bars
+    // Bars
     for (let i = 0; i < BARS.length; i++) {
       const bar  = BARS[i];
-      const val  = needs[bar.key] as number;
+      const val  = needs[bar.key];
       const fill = this.barFills[i];
       fill.clear();
-
-      // Background
-      fill.fillStyle(COLORS.barBg, 1);
+      fill.fillStyle(C.barBg, 1);
       fill.fillRect(bar.x, BAR_Y, BAR_W, BAR_H);
-
-      // Fill
-      const isLow   = val < 25;
-      const fillColor = isLow ? COLORS.barLow : bar.color;
-      fill.fillStyle(fillColor, 1);
+      fill.fillStyle(val < 25 ? C.barLow : bar.color, 1);
       fill.fillRect(bar.x, BAR_Y, Math.floor((val / 100) * BAR_W), BAR_H);
-
-      // Border
-      fill.lineStyle(1, 0x2a3a4a, 1);
+      fill.lineStyle(1, C.uiBorder, 1);
       fill.strokeRect(bar.x, BAR_Y, BAR_W, BAR_H);
-
-      // Value number
-      this.barLabels[i].setText(`${bar.label} ${Math.floor(val)}`);
+      this.barLabels[i].setText(`${Math.floor(val)}`);
     }
 
-    // Time display
+    // Time (real clock)
     const h = String(gt.hour).padStart(2, '0');
     const m = String(gt.minute).padStart(2, '0');
-    const period = gt.hour < 12 ? 'AM' : 'PM';
-    const h12 = gt.hour % 12 || 12;
-    this.timeText.setText(`${h12}:${m} ${period}`);
+    this.timeText.setText(`${h}:${m}`);
 
     // Status
     this.statusText.setText(BEHAVIOR_LABELS[beh] ?? beh);
+
+    // Calendar
+    if (cal.isConnected) {
+      this.calBtnText.setText('📅 Calendar connected');
+      this.calBtn.fillColor = C.calBtnOk;
+      const ev = cal.getActiveEvent();
+      if (ev) {
+        this.calEventText.setText(`▶ ${ev.summary}`);
+      } else {
+        const next = cal.getNextEvent();
+        this.calEventText.setText(next ? `Next: ${next.summary}` : '');
+      }
+    }
   }
 }

@@ -1,52 +1,69 @@
 import type { Needs, BehaviorState, FurnitureItem, GameTimeData } from '../types';
+import type { CalEvent } from '../services/CalendarService';
 import { getMostCriticalNeed } from './NeedsSystem';
 
 export interface AITarget {
   furniture: FurnitureItem;
   behavior: BehaviorState;
-  duration: number;  // ms to spend at target (-1 = until interrupted)
+  duration: number;
+  thought?: string;
 }
 
-const DAILY_SCHEDULE: { hour: number; behavior: BehaviorState; furnitureId: string }[] = [
-  { hour: 7,  behavior: 'showering',       furnitureId: 'shower'  },
-  { hour: 8,  behavior: 'cooking',         furnitureId: 'stove'   },
-  { hour: 8,  behavior: 'eating',          furnitureId: 'table'   },
-  { hour: 10, behavior: 'using_computer',  furnitureId: 'computer'},
-  { hour: 12, behavior: 'cooking',         furnitureId: 'stove'   },
-  { hour: 12, behavior: 'eating',          furnitureId: 'table'   },
-  { hour: 14, behavior: 'reading',         furnitureId: 'bookshelf'},
-  { hour: 16, behavior: 'watching_tv',     furnitureId: 'tv'      },
-  { hour: 18, behavior: 'cooking',         furnitureId: 'stove'   },
-  { hour: 18, behavior: 'eating',          furnitureId: 'table'   },
-  { hour: 20, behavior: 'using_computer',  furnitureId: 'computer'},
-  { hour: 22, behavior: 'sleeping',        furnitureId: 'bed'     },
+// Real-time daily schedule — fires once when the hour changes
+const REAL_SCHEDULE: { hour: number; behavior: BehaviorState; furnitureId: string; thought?: string }[] = [
+  { hour: 7,  behavior: 'showering',       furnitureId: 'shower',   thought: 'Morning shower...' },
+  { hour: 8,  behavior: 'cooking',         furnitureId: 'stove',    thought: 'What\'s for breakfast?' },
+  { hour: 8,  behavior: 'eating',          furnitureId: 'table',    thought: 'Mmm, breakfast 🍳' },
+  { hour: 10, behavior: 'using_computer',  furnitureId: 'computer', thought: 'Let\'s see what\'s online...' },
+  { hour: 12, behavior: 'cooking',         furnitureId: 'stove',    thought: 'Time to cook lunch!' },
+  { hour: 12, behavior: 'eating',          furnitureId: 'table',    thought: 'Lunch time 🥘' },
+  { hour: 14, behavior: 'reading',         furnitureId: 'bookshelf', thought: 'A bit of reading...' },
+  { hour: 16, behavior: 'watching_tv',     furnitureId: 'tv',       thought: 'Afternoon TV 📺' },
+  { hour: 18, behavior: 'cooking',         furnitureId: 'stove',    thought: 'Dinner time!' },
+  { hour: 18, behavior: 'eating',          furnitureId: 'table',    thought: 'Dinner! 🍽' },
+  { hour: 20, behavior: 'using_computer',  furnitureId: 'computer', thought: 'Evening browsing...' },
+  { hour: 22, behavior: 'sleeping',        furnitureId: 'bed',      thought: 'Good night 💤' },
+  { hour: 23, behavior: 'sleeping',        furnitureId: 'bed' },
+  { hour:  0, behavior: 'sleeping',        furnitureId: 'bed' },
+  { hour:  1, behavior: 'sleeping',        furnitureId: 'bed' },
+  { hour:  2, behavior: 'sleeping',        furnitureId: 'bed' },
+  { hour:  3, behavior: 'sleeping',        furnitureId: 'bed' },
+  { hour:  4, behavior: 'sleeping',        furnitureId: 'bed' },
+  { hour:  5, behavior: 'sleeping',        furnitureId: 'bed' },
+  { hour:  6, behavior: 'sleeping',        furnitureId: 'bed',      thought: 'Just five more minutes...' },
 ];
 
-const NEED_TARGETS: Record<string, string> = {
-  hunger:    'table',
-  energy:    'bed',
-  hygiene:   'shower',
-  happiness: 'tv',
+const NEED_TARGETS: Record<string, { id: string; behavior: BehaviorState; thought: string }> = {
+  hunger:    { id: 'table',   behavior: 'eating',          thought: 'So hungry...' },
+  energy:    { id: 'bed',     behavior: 'sleeping',        thought: 'Need to sleep now...' },
+  hygiene:   { id: 'shower',  behavior: 'showering',       thought: 'I should shower...' },
+  happiness: { id: 'tv',      behavior: 'watching_tv',     thought: 'I need some fun!' },
+};
+
+const CALENDAR_BEHAVIORS: Record<string, { id: string; behavior: BehaviorState; thought: string }> = {
+  work:     { id: 'computer', behavior: 'using_computer', thought: '' },
+  meal:     { id: 'table',    behavior: 'eating',         thought: '' },
+  social:   { id: 'sofa',     behavior: 'watching_tv',    thought: '' },
+  birthday: { id: 'table',    behavior: 'eating',         thought: '' },
 };
 
 const BEHAVIOR_DURATIONS: Record<BehaviorState, number> = {
   idle:            3000,
   walking:         0,
-  eating:          12000,
+  eating:          14000,
   sleeping:        -1,
-  watching_tv:     20000,
-  using_computer:  18000,
-  reading:         15000,
-  showering:       10000,
-  cooking:         8000,
+  watching_tv:     22000,
+  using_computer:  20000,
+  reading:         16000,
+  showering:       11000,
+  cooking:         9000,
   greeting_player: 3000,
   chatting:        5000,
 };
 
 export class BehaviorAI {
   private furniture: Map<string, FurnitureItem>;
-  private lastScheduleHour = -1;
-  private currentTarget: AITarget | null = null;
+  private lastHour = -1;
   private idleTimer = 0;
 
   constructor(furniture: FurnitureItem[]) {
@@ -59,76 +76,65 @@ export class BehaviorAI {
     currentBehavior: BehaviorState,
     atTarget: boolean,
     playerInteraction: BehaviorState | null,
+    activeCalEvent: CalEvent | null,
   ): AITarget | null {
-    // Player interaction takes immediate priority
     if (playerInteraction) {
-      const f = this.furniture.get('sofa') ?? this.furniture.values().next().value!;
-      return {
-        furniture: f,
-        behavior: playerInteraction,
-        duration: BEHAVIOR_DURATIONS[playerInteraction],
-      };
+      return this.makeTarget('sofa', playerInteraction, BEHAVIOR_DURATIONS[playerInteraction]);
     }
 
-    // If currently doing something with time left, stay put
-    if (atTarget && currentBehavior !== 'idle' && this.currentTarget) {
-      return null;
-    }
+    if (atTarget && currentBehavior !== 'idle') return null;
 
-    // Critical needs override everything
-    const critical = getMostCriticalNeed(needs);
-    if (critical) {
-      const fid = NEED_TARGETS[critical];
-      const f = this.furniture.get(fid);
-      if (f) {
-        let behavior: BehaviorState = 'idle';
-        if (critical === 'hunger')   behavior = fid === 'table' ? 'eating' : 'cooking';
-        if (critical === 'energy')   behavior = 'sleeping';
-        if (critical === 'hygiene')  behavior = 'showering';
-        if (critical === 'happiness') behavior = 'watching_tv';
-        this.currentTarget = { furniture: f, behavior, duration: BEHAVIOR_DURATIONS[behavior] };
-        return this.currentTarget;
+    // Calendar event takes priority over schedule
+    if (activeCalEvent) {
+      const mapping = CALENDAR_BEHAVIORS[activeCalEvent.type];
+      if (mapping) {
+        const thought = this.calendarThought(activeCalEvent);
+        return this.makeTarget(mapping.id, mapping.behavior, BEHAVIOR_DURATIONS[mapping.behavior], thought);
       }
     }
 
-    // Follow daily schedule (fire once per hour slot)
+    // Critical needs
+    const critical = getMostCriticalNeed(needs);
+    if (critical) {
+      const t = NEED_TARGETS[critical];
+      if (t) return this.makeTarget(t.id, t.behavior, BEHAVIOR_DURATIONS[t.behavior], t.thought);
+    }
+
+    // Real-time schedule
     const hour = gameTime.hour;
-    if (hour !== this.lastScheduleHour) {
-      const scheduled = DAILY_SCHEDULE.filter(s => s.hour === hour);
-      if (scheduled.length > 0) {
-        this.lastScheduleHour = hour;
-        const entry = scheduled[0];
-        const f = this.furniture.get(entry.furnitureId);
-        if (f) {
-          this.currentTarget = {
-            furniture: f,
-            behavior: entry.behavior,
-            duration: BEHAVIOR_DURATIONS[entry.behavior],
-          };
-          return this.currentTarget;
-        }
+    if (hour !== this.lastHour) {
+      this.lastHour = hour;
+      const entry = REAL_SCHEDULE.find(s => s.hour === hour);
+      if (entry) {
+        return this.makeTarget(entry.furnitureId, entry.behavior, BEHAVIOR_DURATIONS[entry.behavior], entry.thought);
       }
     }
 
     // Idle wandering
     this.idleTimer -= 16;
     if (this.idleTimer <= 0) {
-      this.idleTimer = 5000 + Math.random() * 8000;
-      const items = [...this.furniture.values()];
+      this.idleTimer = 6000 + Math.random() * 10000;
+      const items = [...this.furniture.values()].filter(f => f.action !== null);
       const pick = items[Math.floor(Math.random() * items.length)];
-      const behavior = pick.action ?? 'idle';
-      this.currentTarget = {
-        furniture: pick,
-        behavior,
-        duration: BEHAVIOR_DURATIONS[behavior] ?? 4000,
-      };
-      return this.currentTarget;
+      const beh = pick.action ?? 'idle';
+      return this.makeTarget(pick.id, beh, BEHAVIOR_DURATIONS[beh] ?? 5000);
     }
-
     return null;
   }
 
-  clearTarget(): void {
-    this.currentTarget = null;
+  private makeTarget(fid: string, behavior: BehaviorState, duration: number, thought?: string): AITarget | null {
+    const f = this.furniture.get(fid);
+    if (!f) return null;
+    return { furniture: f, behavior, duration: duration < 0 ? 999999 : duration, thought };
+  }
+
+  private calendarThought(event: CalEvent): string {
+    switch (event.type) {
+      case 'work':     return `📅 ${event.summary}`;
+      case 'meal':     return `🍴 ${event.summary}`;
+      case 'social':   return `🎉 ${event.summary}`;
+      case 'birthday': return `🎂 ${event.summary}!`;
+      default:         return event.summary;
+    }
   }
 }

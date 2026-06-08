@@ -1,17 +1,104 @@
 import Phaser from 'phaser';
 import {
-  CHAR_SPEED, CHAR_W, CHAR_H,
+  CHAR_SPEED, PX,
   LOWER_WALK_Y, UPPER_WALK_Y,
   FLOOR_SEP_TOP, FLOOR_SEP_BOT, STAIRS_X,
-  LEFT_ROOM_RIGHT, RIGHT_ROOM_LEFT,
-  COLORS,
+  C,
 } from '../config';
 import type { BehaviorState, Needs } from '../types';
 
 interface Waypoint { x: number; y: number }
 
-const SKIN  = COLORS.skin;
-const HAIR  = COLORS.hair;
+// ─── Pixel sprite helpers ────────────────────────────────────────────────────
+
+type Row = (number | null)[];
+
+function drawSprite(g: Phaser.GameObjects.Graphics, rows: Row[], px: number, ox: number, oy: number): void {
+  for (let r = 0; r < rows.length; r++) {
+    const row = rows[r];
+    for (let col = 0; col < row.length; col++) {
+      const color = row[col];
+      if (color !== null) {
+        g.fillStyle(color, 1);
+        g.fillRect(ox + col * px, oy + r * px, px, px);
+      }
+    }
+  }
+}
+
+function drawSpriteOutline(g: Phaser.GameObjects.Graphics, rows: Row[], px: number, ox: number, oy: number): void {
+  const offsets = [[-1,0],[1,0],[0,-1],[0,1]];
+  g.fillStyle(C.outline, 1);
+  for (let r = 0; r < rows.length; r++) {
+    const row = rows[r];
+    for (let col = 0; col < row.length; col++) {
+      if (row[col] !== null) {
+        for (const [dx, dy] of offsets) {
+          const nr = r + dy, nc = col + dx;
+          const neighbor = rows[nr]?.[nc];
+          if (neighbor === undefined || neighbor === null) {
+            g.fillRect(ox + (col + dx) * px, oy + (r + dy) * px, px, px);
+          }
+        }
+      }
+    }
+  }
+}
+
+// ─── Sprite frame definitions (10 wide × 20 tall at 1× = 30×60 at PX=3) ────
+
+const K = C.outline;
+const S = C.skin;
+const D = C.skinShadow;
+const H = C.hair;
+const B = C.shirtBlue;
+const L = C.shirtBlueLt;
+const P = C.pants;
+const Q = C.pantsLt;
+const O = C.shoes;
+
+// Body frame (without legs — legs are animated separately)
+const BODY: Row[] = [
+  [null,null,H,  H,  H,  H,  H,  H,  null,null],  // hair top
+  [null,H,   H,  H,  H,  H,  H,  H,  H,   null],  // hair
+  [null,H,   S,  S,  S,  S,  S,  S,  H,   null],  // head top
+  [null,S,   S,  S,  S,  S,  S,  S,  S,   null],  // forehead
+  [null,S,   S,  D,  S,  S,  D,  S,  S,   null],  // eyes (dark pupils)
+  [null,S,   S,  S,  D,  D,  S,  S,  S,   null],  // nose bridge
+  [null,S,   D,  S,  S,  S,  S,  S,  D,   null],  // cheeks
+  [null,null,S,  D,  D,  D,  D,  S,  null,null],  // chin/mouth
+  [null,null,B,  B,  B,  B,  B,  B,  null,null],  // collar
+  [null,B,   B,  B,  B,  B,  B,  B,  B,   null],  // shoulder
+  [B,   B,   B,  L,  B,  B,  L,  B,  B,   B   ],  // chest
+  [B,   B,   B,  B,  B,  B,  B,  B,  B,   B   ],  // torso
+  [null,B,   B,  B,  P,  P,  B,  B,  B,   null],  // waist
+];
+
+// Leg pairs per walk frame [leftLegRows, rightLegRows] offset from waist
+function legsFrame(frame: number): { left: Row[]; right: Row[]; lx: number; rx: number } {
+  // 4-frame cycle
+  const swings = [[2, -2], [1, -1], [-2, 2], [-1, 1]];
+  const [lo, ro] = swings[frame % 4];
+  return {
+    left:  [ [P,Q,P], [P,P,P], [P,Q,P], [O,O,O] ],
+    right: [ [P,Q,P], [P,P,P], [P,Q,P], [O,O,O] ],
+    lx: 2 + lo,
+    rx: 5 + ro,
+  };
+}
+
+// Sleeping sprite (lying horizontal, 22w × 8h)
+const SLEEP: Row[] = [
+  [null,null,null,null,null,null,null,null,H,H,H,H,H,H,null,null,null,null,null,null,null,null],
+  [B,B,B,B,B,B,B,B,S,S,S,S,S,S,S,H,null,null,null,null,null,null],
+  [B,L,B,B,B,B,B,B,S,S,D,S,S,D,S,H,null,null,null,null,null,null],
+  [B,B,B,B,B,B,B,B,S,S,S,D,D,S,S,H,null,null,null,null,null,null],
+  [P,P,P,P,P,Q,P,P,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+  [P,P,P,P,P,P,P,P,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+  [O,O,O,O,O,O,O,O,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+];
+
+// ─── LittlePerson ────────────────────────────────────────────────────────────
 
 export class LittlePerson extends Phaser.GameObjects.Container {
   public needs: Needs = { hunger: 80, happiness: 75, energy: 90, hygiene: 85 };
@@ -25,27 +112,37 @@ export class LittlePerson extends Phaser.GameObjects.Container {
   private walkTimer = 0;
   private actionTimer = 0;
   private actionDuration = 0;
-  private thoughtText: Phaser.GameObjects.Text;
+  private thoughtBubble: Phaser.GameObjects.Text;
   private thoughtTimer = 0;
-  private bounceOffset = 0;
-  private bounceDir = 1;
+  private zText: Phaser.GameObjects.Text;
+  private zTimer = 0;
+  private idleBounce = 0;
+  private idleBounceDir = 1;
 
   constructor(scene: Phaser.Scene, x: number, y: number) {
     super(scene, x, y);
     this.gfx = scene.add.graphics();
     this.add(this.gfx);
 
-    this.thoughtText = scene.add.text(0, -CHAR_H - 14, '', {
-      fontSize: '8px',
-      color: '#1a1a1a',
-      backgroundColor: '#fff9c4',
-      padding: { x: 4, y: 2 },
-      wordWrap: { width: 120 },
-    }).setOrigin(0.5, 1).setVisible(false);
-    this.add(this.thoughtText);
+    this.thoughtBubble = scene.add.text(0, -70, '', {
+      fontSize: '9px',
+      fontFamily: 'monospace',
+      color: '#221100',
+      backgroundColor: '#ffe8aa',
+      padding: { x: 6, y: 4 },
+      wordWrap: { width: 140 },
+      align: 'center',
+    }).setOrigin(0.5, 1).setDepth(50).setVisible(false);
+    this.add(this.thoughtBubble);
+
+    this.zText = scene.add.text(20, -80, '', {
+      fontSize: '11px',
+      fontFamily: 'monospace',
+      color: '#bbccff',
+    }).setDepth(50).setVisible(false);
+    this.add(this.zText);
 
     scene.add.existing(this);
-    this.draw();
   }
 
   navigateTo(tx: number, ty: number): void {
@@ -57,13 +154,11 @@ export class LittlePerson extends Phaser.GameObjects.Container {
     const tgtFloor = ty      < (FLOOR_SEP_TOP + FLOOR_SEP_BOT) / 2 ? 'upper' : 'lower';
 
     if (myFloor !== tgtFloor) {
-      // Walk to staircase, cross floor, then go to target
-      const stairsApproachY = myFloor === 'lower' ? LOWER_WALK_Y : UPPER_WALK_Y;
-      const stairsExitY     = tgtFloor === 'lower' ? LOWER_WALK_Y : UPPER_WALK_Y;
-      this.waypoints.push({ x: STAIRS_X, y: stairsApproachY });
-      this.waypoints.push({ x: STAIRS_X, y: stairsExitY });
+      const approachY = myFloor === 'lower' ? LOWER_WALK_Y : UPPER_WALK_Y;
+      const exitY     = tgtFloor === 'lower' ? LOWER_WALK_Y : UPPER_WALK_Y;
+      this.waypoints.push({ x: STAIRS_X, y: approachY });
+      this.waypoints.push({ x: STAIRS_X, y: exitY });
     }
-
     this.waypoints.push({ x: tx, y: ty });
   }
 
@@ -74,20 +169,20 @@ export class LittlePerson extends Phaser.GameObjects.Container {
     this.atTarget = true;
   }
 
-  showThought(text: string, durationMs = 4000): void {
-    this.thoughtText.setText(text).setVisible(true);
-    this.thoughtTimer = durationMs;
+  showThought(text: string, ms = 4000): void {
+    this.thoughtBubble.setText(text).setVisible(true);
+    this.thoughtTimer = ms;
   }
 
   hideThought(): void {
-    this.thoughtText.setVisible(false);
+    this.thoughtBubble.setVisible(false);
     this.thoughtTimer = 0;
   }
 
   update(delta: number): void {
     const dt = delta / 1000;
 
-    // Move along waypoints
+    // ── Navigation ───────────────────────────────────────────────────────────
     if (this.waypoints.length > 0) {
       const next = this.waypoints[0];
       const dx = next.x - this.x;
@@ -103,150 +198,152 @@ export class LittlePerson extends Phaser.GameObjects.Container {
           this.atTarget = true;
         }
       } else {
-        const speed = CHAR_SPEED * dt;
         this.facingRight = dx > 0;
-        this.x += (dx / dist) * speed;
-        this.y += (dy / dist) * speed;
+        const spd = CHAR_SPEED * dt;
+        this.x += (dx / dist) * spd;
+        this.y += (dy / dist) * spd;
         this.behavior = 'walking';
       }
     }
 
-    // Action timer
+    // ── Action timer ─────────────────────────────────────────────────────────
     if (this.atTarget && this.actionDuration > 0) {
       this.actionTimer += delta;
       if (this.actionTimer >= this.actionDuration) {
         this.actionTimer = 0;
         this.actionDuration = 0;
         this.behavior = 'idle';
-        this.atTarget = true;
       }
     }
 
-    // Walk animation frame
+    // ── Walk animation ───────────────────────────────────────────────────────
     if (this.behavior === 'walking') {
       this.walkTimer += delta;
-      if (this.walkTimer > 160) {
-        this.walkTimer = 0;
-        this.walkFrame = (this.walkFrame + 1) % 4;
+      if (this.walkTimer > 140) { this.walkTimer = 0; this.walkFrame = (this.walkFrame + 1) % 4; }
+    } else {
+      this.walkFrame = 0; this.walkTimer = 0;
+    }
+
+    // ── Idle bounce ──────────────────────────────────────────────────────────
+    if (this.behavior === 'idle') {
+      this.idleBounce += this.idleBounceDir * 0.5 * dt * 60;
+      if (Math.abs(this.idleBounce) > 1) this.idleBounceDir *= -1;
+    } else { this.idleBounce = 0; }
+
+    // ── Sleep Z's ────────────────────────────────────────────────────────────
+    if (this.behavior === 'sleeping') {
+      this.zTimer += delta;
+      if (this.zTimer > 900) {
+        this.zTimer = 0;
+        const zs = ['z', 'zz', 'zzz'];
+        this.zText.setText(zs[Math.floor(Math.random() * zs.length)]).setVisible(true);
+        this.scene.time.delayedCall(700, () => this.zText.setVisible(false));
       }
-    } else {
-      this.walkFrame = 0;
-      this.walkTimer = 0;
-    }
+    } else { this.zText.setVisible(false); this.zTimer = 0; }
 
-    // Idle bounce
-    if (this.behavior === 'idle' || this.behavior === 'watching_tv' || this.behavior === 'using_computer') {
-      this.bounceOffset += this.bounceDir * 0.4 * dt * 60;
-      if (Math.abs(this.bounceOffset) > 0.8) this.bounceDir *= -1;
-    } else {
-      this.bounceOffset = 0;
-    }
-
-    // Thought bubble timer
+    // ── Thought timer ─────────────────────────────────────────────────────────
     if (this.thoughtTimer > 0) {
       this.thoughtTimer -= delta;
       if (this.thoughtTimer <= 0) this.hideThought();
     }
 
-    this.draw();
+    this.redraw();
   }
 
-  private draw(): void {
+  private redraw(): void {
     const g = this.gfx;
     g.clear();
+    const px = PX;
+    const bounce = Math.round(this.idleBounce);
 
-    const flip = this.facingRight ? 1 : -1;
-    const isSleeping = this.behavior === 'sleeping';
-    const isShowering = this.behavior === 'showering';
-
-    if (isSleeping) {
-      this.drawSleeping(g);
+    if (this.behavior === 'sleeping') {
+      this.drawSleeping(g, px);
       return;
     }
 
-    // Walk animation: leg/arm angles
-    const legSwing = this.behavior === 'walking'
-      ? Math.sin(this.walkFrame * Math.PI / 2) * 5
-      : 0;
-    const armSwing = -legSwing;
+    const ox = -5 * px; // center: sprite is 10px wide
+    const oy = (-BODY.length - 4) * px + bounce; // top of head, adjusted for legs
 
-    const cy = Math.round(this.bounceOffset);
+    // Flip if facing left
+    const flipMat = this.facingRight
+      ? undefined
+      : { a: -1, b: 0, c: 0, d: 1, tx: 0, ty: 0 };
 
-    // Shoes
-    g.fillStyle(COLORS.shoes, 1);
-    g.fillRect(-5, cy + 10, 5, 3);
-    g.fillRect(1, cy + 10, 5, 3);
-
-    // Legs (pants)
-    g.fillStyle(COLORS.pants, 1);
-    // left leg
-    g.fillRect(-5 + Math.round(legSwing * flip), cy + 1, 4, 10);
-    // right leg
-    g.fillRect(1 + Math.round(-legSwing * flip), cy + 1, 4, 10);
-
-    // Body / torso
-    const shirtColor = (this.behavior === 'sleeping') ? COLORS.shirtPajama : COLORS.shirt;
-    g.fillStyle(shirtColor, 1);
-    g.fillRect(-6, cy - 12, 12, 14);
-
-    // Arms
-    g.fillStyle(shirtColor, 1);
-    // left arm
-    g.fillRect(-9, cy - 11 + Math.round(armSwing * flip), 3, 8);
-    // right arm
-    if (this.behavior === 'eating' || this.behavior === 'cooking') {
-      g.fillRect(6, cy - 16, 3, 8);  // arm raised
-    } else if (this.behavior === 'using_computer') {
-      g.fillRect(6, cy - 8, 3, 5);
-      g.fillRect(-9, cy - 8, 3, 5);
+    if (flipMat) {
+      // Mirror by drawing at positive x and using negative scale trick with offset
+      this.gfx.setX(5 * px); // pivot to sprite center
     } else {
-      g.fillRect(6, cy - 11 + Math.round(-armSwing * flip), 3, 8);
+      this.gfx.setX(0);
     }
 
-    // Neck
-    g.fillStyle(SKIN, 1);
-    g.fillRect(-2, cy - 14, 4, 3);
+    // Outline pass
+    drawSpriteOutline(g, BODY, px, ox + (flipMat ? 0 : 0), oy);
 
-    // Head
-    g.fillStyle(SKIN, 1);
-    g.fillRect(-5, cy - 25, 10, 11);
-
-    // Hair
-    g.fillStyle(HAIR, 1);
-    g.fillRect(-5, cy - 25, 10, 4);
-
-    // Eye
-    g.fillStyle(0x000000, 1);
-    if (flip > 0) {
-      g.fillRect(1, cy - 20, 2, 2);
+    // Color pass
+    if (!this.facingRight) {
+      this.drawFlipped(g, BODY, px, ox, oy);
     } else {
-      g.fillRect(-3, cy - 20, 2, 2);
+      drawSprite(g, BODY, px, ox, oy);
     }
 
-    // Shower effect
-    if (isShowering) {
-      g.fillStyle(0x29b6f6, 0.4);
-      for (let i = 0; i < 5; i++) {
-        g.fillRect(-8 + i * 4, cy - 28 - (Math.floor(Date.now() / 200 + i) % 6) * 3, 2, 5);
+    // Legs
+    const legsY = oy + BODY.length * px;
+    const lf = legsFrame(this.walkFrame);
+
+    const lox = ox + lf.lx * px;
+    const rox = ox + lf.rx * px;
+
+    if (this.facingRight) {
+      drawSpriteOutline(g, lf.left, px, lox, legsY);
+      drawSprite(g, lf.left, px, lox, legsY);
+      drawSpriteOutline(g, lf.right, px, rox, legsY);
+      drawSprite(g, lf.right, px, rox, legsY);
+    } else {
+      this.drawFlippedOutline(g, lf.left,  px, ox + (9 - lf.lx - 3) * px, legsY);
+      this.drawFlipped(g, lf.left,  px, ox + (9 - lf.lx - 3) * px, legsY);
+      this.drawFlippedOutline(g, lf.right, px, ox + (9 - lf.rx - 3) * px, legsY);
+      this.drawFlipped(g, lf.right, px, ox + (9 - lf.rx - 3) * px, legsY);
+    }
+  }
+
+  private drawFlipped(g: Phaser.GameObjects.Graphics, rows: Row[], px: number, ox: number, oy: number): void {
+    const w = (rows[0]?.length ?? 0) - 1;
+    for (let r = 0; r < rows.length; r++) {
+      const row = rows[r];
+      for (let col = 0; col < row.length; col++) {
+        const color = row[col];
+        if (color !== null) {
+          g.fillStyle(color, 1);
+          g.fillRect(ox + (w - col) * px, oy + r * px, px, px);
+        }
       }
     }
   }
 
-  private drawSleeping(g: Phaser.GameObjects.Graphics): void {
-    // Lying down (rotated)
-    g.fillStyle(COLORS.bedSheet, 1);
-    g.fillRect(-16, -6, 32, 10);
+  private drawFlippedOutline(g: Phaser.GameObjects.Graphics, rows: Row[], px: number, ox: number, oy: number): void {
+    const offsets = [[-1,0],[1,0],[0,-1],[0,1]];
+    const w = (rows[0]?.length ?? 0) - 1;
+    g.fillStyle(C.outline, 1);
+    for (let r = 0; r < rows.length; r++) {
+      const row = rows[r];
+      for (let col = 0; col < row.length; col++) {
+        if (row[col] !== null) {
+          for (const [dx, dy] of offsets) {
+            const nc = w - (col + dx);
+            const nr = r + dy;
+            if (rows[nr]?.[w - (col + dx)] === undefined || rows[nr]?.[nc] === null) {
+              g.fillRect(ox + (w - col + dx) * px, oy + (r + dy) * px, px, px);
+            }
+          }
+        }
+      }
+    }
+  }
 
-    g.fillStyle(SKIN, 1);
-    g.fillRect(-21, -7, 10, 10);  // head on pillow
-
-    g.fillStyle(HAIR, 1);
-    g.fillRect(-21, -7, 10, 3);
-
-    // Z Z Z
-    g.fillStyle(0xffd54f, 0.9);
-    g.fillRect(-24, -14, 4, 4);
-    g.fillRect(-20, -20, 5, 5);
-    g.fillRect(-14, -26, 6, 6);
+  private drawSleeping(g: Phaser.GameObjects.Graphics, px: number): void {
+    const ox = -11 * px;
+    const oy = -4 * px;
+    drawSpriteOutline(g, SLEEP, px, ox, oy);
+    drawSprite(g, SLEEP, px, ox, oy);
   }
 }
