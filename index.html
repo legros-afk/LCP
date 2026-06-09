@@ -235,6 +235,7 @@
   </div>
 
   <div id="portrait-ui">
+    <div id="pu-birthday" style="display:none;text-align:center;color:#ffdd44;background:#331100;font-size:11px;padding:4px 8px;margin-bottom:6px;font-family:monospace;letter-spacing:1px;"></div>
     <div class="pu-bars">
       <div class="pu-bar-item">
         <span class="pu-bar-label">HNG</span>
@@ -311,6 +312,15 @@
         // Floor button
         curFloor = d.floor;
         floorBtn.textContent = curFloor === 'lower' ? '▲ UP' : '▼ DOWN';
+
+        // Birthday banner
+        var bdayBar = document.getElementById('pu-birthday');
+        if (d.birthdays && d.birthdays.length > 0) {
+          bdayBar.textContent = '🎂 ' + d.birthdays.join(' & ') + ' 🎉';
+          bdayBar.style.display = 'block';
+        } else {
+          bdayBar.style.display = 'none';
+        }
       });
 
       document.getElementById('pu-feed').addEventListener('click', function () {

@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { W, H, UI_Y, C } from '../config';
 import { PORTRAIT } from '../utils/orientation';
+import { calendarService } from '../services/CalendarService';
 import type { GameScene } from './GameScene';
 
 const BAR_W = 108;
@@ -43,6 +44,7 @@ export class UIScene extends Phaser.Scene {
   private chatVisible = false;
   private gameScene!: GameScene;
   private lastPortraitDispatch = 0;
+  private birthdayNotice!: Phaser.GameObjects.Text;
 
   constructor() { super({ key: 'UIScene', active: false }); }
 
@@ -123,6 +125,15 @@ export class UIScene extends Phaser.Scene {
     this.add.text(200, 32,  'BEDROOM',     lblStyle).setOrigin(0.5, 0).setAlpha(0.8);
     this.add.text(590, 32,  'BATHROOM',    lblStyle).setOrigin(0.5, 0).setAlpha(0.8);
 
+    // Birthday notice (hidden until a birthday is detected today)
+    this.birthdayNotice = this.add.text(W / 2, UI_Y + 6, '', {
+      fontSize: '11px',
+      fontFamily: 'monospace',
+      color: '#ffdd44',
+      backgroundColor: '#331100',
+      padding: { x: 8, y: 3 },
+    }).setOrigin(0.5, 0).setVisible(false);
+
     // Chat input
     const inputEl = document.createElement('input');
     inputEl.type = 'text';
@@ -176,6 +187,7 @@ export class UIScene extends Phaser.Scene {
       const now = this.time.now;
       if (now - this.lastPortraitDispatch >= 500) {
         this.lastPortraitDispatch = now;
+        const todayBdays = calendarService.getBirthdaysToday();
         window.dispatchEvent(new CustomEvent('lcp-state', {
           detail: {
             needs,
@@ -183,6 +195,7 @@ export class UIScene extends Phaser.Scene {
             minute: gt.minute,
             behavior: beh,
             floor: this.gameScene.getFloor(),
+            birthdays: todayBdays.map(e => e.summary),
           },
         }));
       }
@@ -208,6 +221,15 @@ export class UIScene extends Phaser.Scene {
     const m = String(gt.minute).padStart(2, '0');
     this.timeText.setText(`${h}:${m}`);
     this.statusText.setText(BEHAVIOR_LABELS[beh] ?? beh);
+
+    // Birthday notice banner
+    const todayBirthdays = calendarService.getBirthdaysToday();
+    if (todayBirthdays.length > 0) {
+      const names = todayBirthdays.map(e => e.summary).join(' & ');
+      this.birthdayNotice.setText(`🎂 ${names} 🎉`).setVisible(true);
+    } else {
+      this.birthdayNotice.setVisible(false);
+    }
 
     if (cal.isConnected) {
       this.calBtnText.setText('📅 Calendar connected');

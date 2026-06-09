@@ -12,6 +12,27 @@ import { BehaviorAI } from '../systems/BehaviorAI';
 import { tickNeeds, applyPlayerFeed, applyPlayerChat, applyPlayerBell } from '../systems/NeedsSystem';
 import { calendarService } from '../services/CalendarService';
 
+// ─── Birthday balloon positions (living room ceiling) ────────────────────────
+const BALLOONS = [
+  { x:  72, baseY: 300, color: 0xcc3333, phase: 0.0 },
+  { x: 130, baseY: 294, color: 0xddaa00, phase: 1.2 },
+  { x: 192, baseY: 302, color: 0x3366cc, phase: 2.4 },
+  { x: 254, baseY: 296, color: 0x33aa44, phase: 0.8 },
+  { x: 316, baseY: 298, color: 0xaa33aa, phase: 1.8 },
+  { x: 374, baseY: 292, color: 0xdd6600, phase: 3.0 },
+];
+
+function extractBirthdayName(summary: string): string {
+  return summary
+    .replace(/\b(?:happy\s+)?birth(?:day)?\b/gi, '')
+    .replace(/\banniversaire(?:\s+de)?\b/gi, '')
+    .replace(/\bbday\b/gi, '')
+    .replace(/[':!\-–—]/g, ' ')
+    .replace(/\bde\b/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim() || summary;
+}
+
 // ─── TV channels ─────────────────────────────────────────────────────────────
 const TV_CHANNELS = [
   { name: 'NEWS',    screenColor: 0x1a3a66, glowColor: 0x3366bb, thought: 'Watching the news... 📰' },
@@ -61,6 +82,13 @@ export class GameScene extends Phaser.Scene {
   private monitorOn = false;
   private lastHourDrawn = -1;
 
+  // Calendar / birthday state
+  private calendarConnected = false;
+  private birthdayCheckTimer = 0;
+  private birthdayReminderTimer = 0;
+  private birthdayDecorGfx: Phaser.GameObjects.Graphics | null = null;
+  private birthdayBannerText: Phaser.GameObjects.Text | null = null;
+
   constructor() { super('GameScene'); }
 
   create(): void {
@@ -89,6 +117,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     calendarService.init();
+    calendarService.onFetch = () => this.checkBirthdays();
     // Refresh calendar events every 10 minutes
     this.time.addEvent({ delay: 600_000, loop: true, callback: () => calendarService.fetchToday() });
 
@@ -189,6 +218,41 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.person.update(delta);
+
+    // Detect calendar connect (first time) → check birthdays immediately
+    if (!this.calendarConnected && calendarService.isConnected) {
+      this.calendarConnected = true;
+      this.checkBirthdays();
+    }
+
+    // Periodic birthday re-check (every minute, in case of date rollover)
+    this.birthdayCheckTimer += delta;
+    if (this.birthdayCheckTimer >= 60_000) {
+      this.birthdayCheckTimer = 0;
+      if (calendarService.isConnected) this.checkBirthdays();
+    }
+
+    // Animate birthday balloon decorations
+    if (this.birthdayDecorGfx) {
+      this.drawBalloons(this.birthdayDecorGfx, Date.now() / 1000);
+    }
+
+    // Upcoming birthday reminders — person shows thought bubble every 5 minutes
+    if (calendarService.isConnected && this.person.behavior !== 'sleeping') {
+      this.birthdayReminderTimer += delta;
+      if (this.birthdayReminderTimer >= 300_000) {
+        this.birthdayReminderTimer = 0;
+        const upcoming = calendarService.getUpcomingBirthdays();
+        if (upcoming.length > 0) {
+          const b = upcoming[0];
+          const name = extractBirthdayName(b.summary);
+          const msg = b.daysAway === 1
+            ? `${name}'s birthday is tomorrow! 🎂`
+            : `${name}'s birthday in ${b.daysAway} days! 🎂`;
+          this.person.showThought(msg, 6000);
+        }
+      }
+    }
 
     // TV channel rotation — switches every 30 real seconds while TV is on
     if (this.tvOn) {
@@ -812,6 +876,72 @@ export class GameScene extends Phaser.Scene {
     g.fillRect(x, y, 52, 52);
     g.fillStyle(0xffffff, 0.25);
     g.fillRect(x + 5, y + 5, 6, 42);
+  }
+
+  private checkBirthdays(): void {
+    const birthdays = calendarService.getBirthdaysToday();
+    if (birthdays.length === 0) {
+      // Clean up decorations if they somehow persist past midnight
+      if (this.birthdayDecorGfx) { this.birthdayDecorGfx.destroy(); this.birthdayDecorGfx = null; }
+      if (this.birthdayBannerText) { this.birthdayBannerText.destroy(); this.birthdayBannerText = null; }
+      return;
+    }
+
+    // Build a readable list of names
+    const names = birthdays
+      .map(e => extractBirthdayName(e.summary))
+      .filter(Boolean)
+      .join(' & ');
+
+    // Create balloon graphics layer (reused every frame for animation)
+    if (!this.birthdayDecorGfx) {
+      this.birthdayDecorGfx = this.add.graphics().setDepth(4);
+    }
+
+    // Create or update the banner text
+    const bannerMsg = `🎂 Happy Birthday, ${names}! 🎉`;
+    if (!this.birthdayBannerText) {
+      this.birthdayBannerText = this.add.text(
+        (WALL + LEFT_ROOM_RIGHT) / 2,
+        LOWER_Y_TOP + 12,
+        bannerMsg,
+        {
+          fontSize: '9px',
+          fontFamily: 'monospace',
+          color: '#ffdd44',
+          backgroundColor: '#331100',
+          padding: { x: 6, y: 3 },
+        },
+      ).setOrigin(0.5, 0).setDepth(7);
+    } else {
+      this.birthdayBannerText.setText(bannerMsg);
+    }
+
+    // Celebration thought from person
+    this.person.showThought(`🎂 It's ${names}'s birthday!`, 6000);
+  }
+
+  private drawBalloons(g: Phaser.GameObjects.Graphics, t: number): void {
+    g.clear();
+    for (const b of BALLOONS) {
+      const bob = Math.sin(t * 1.1 + b.phase) * 4;
+      const by  = b.baseY + bob;
+      // String
+      g.lineStyle(1, 0x887755, 0.7);
+      g.beginPath();
+      g.moveTo(b.x, by + 12);
+      g.lineTo(b.x + 2, by + 30);
+      g.strokePath();
+      // Balloon body
+      g.fillStyle(b.color, 1);
+      g.fillCircle(b.x, by, 11);
+      // Highlight
+      g.fillStyle(0xffffff, 0.28);
+      g.fillCircle(b.x - 3, by - 4, 4);
+      // Knot
+      g.fillStyle(b.color, 1);
+      g.fillRect(b.x - 1, by + 10, 2, 4);
+    }
   }
 
   private drawExerciseMat(g: Phaser.GameObjects.Graphics, x: number, y: number): void {

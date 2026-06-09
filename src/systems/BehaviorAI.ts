@@ -43,10 +43,14 @@ const NEED_TARGETS: Record<string, { id: string; behavior: BehaviorState; though
 };
 
 const CALENDAR_BEHAVIORS: Record<string, { id: string; behavior: BehaviorState; thought: string }> = {
-  work:     { id: 'computer', behavior: 'using_computer', thought: '' },
-  meal:     { id: 'table',    behavior: 'eating',         thought: '' },
-  social:   { id: 'sofa',     behavior: 'watching_tv',    thought: '' },
-  birthday: { id: 'table',    behavior: 'eating',         thought: '' },
+  work:          { id: 'computer',     behavior: 'using_computer', thought: '' },
+  meal:          { id: 'table',        behavior: 'eating',         thought: '' },
+  social:        { id: 'sofa',         behavior: 'watching_tv',    thought: '' },
+  birthday:      { id: 'sofa',         behavior: 'watching_tv',    thought: '' },
+  exercise:      { id: 'exercise_mat', behavior: 'exercising',     thought: '' },
+  entertainment: { id: 'tv',           behavior: 'watching_tv',    thought: '' },
+  health:        { id: 'computer',     behavior: 'using_computer', thought: '' },
+  travel:        { id: 'bed',          behavior: 'sleeping',       thought: '' },
 };
 
 const BEHAVIOR_DURATIONS: Record<BehaviorState, number> = {
@@ -134,11 +138,15 @@ export class BehaviorAI {
 
   private calendarThought(event: CalEvent): string {
     switch (event.type) {
-      case 'work':     return `📅 ${event.summary}`;
-      case 'meal':     return `🍴 ${event.summary}`;
-      case 'social':   return `🎉 ${event.summary}`;
-      case 'birthday': return `🎂 ${event.summary}!`;
-      default:         return event.summary;
+      case 'work':          return `📅 ${event.summary}`;
+      case 'meal':          return `🍴 ${event.summary}`;
+      case 'social':        return `🎉 ${event.summary}`;
+      case 'birthday':      return `🎂 ${event.summary}!`;
+      case 'exercise':      return `💪 ${event.summary}`;
+      case 'entertainment': return `🎬 ${event.summary}`;
+      case 'health':        return `😬 ${event.summary}`;
+      case 'travel':        return `✈️ ${event.summary}`;
+      default:              return event.summary;
     }
   }
 }
