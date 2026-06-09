@@ -12,6 +12,15 @@ import { BehaviorAI } from '../systems/BehaviorAI';
 import { tickNeeds, applyPlayerFeed, applyPlayerChat, applyPlayerBell } from '../systems/NeedsSystem';
 import { calendarService } from '../services/CalendarService';
 
+// ─── TV channels ─────────────────────────────────────────────────────────────
+const TV_CHANNELS = [
+  { name: 'NEWS',    screenColor: 0x1a3a66, glowColor: 0x3366bb, thought: 'Watching the news... 📰' },
+  { name: 'SPORTS',  screenColor: 0x1a4422, glowColor: 0x33aa55, thought: 'Go go go! ⚽'            },
+  { name: 'COOKING', screenColor: 0x441a0a, glowColor: 0xaa5522, thought: 'Cooking show! 🍳'         },
+  { name: 'COMEDY',  screenColor: 0x443300, glowColor: 0xddaa00, thought: 'Hahaha 😂 So funny!'     },
+  { name: 'NATURE',  screenColor: 0x1a3a22, glowColor: 0x44aa66, thought: 'Nature is beautiful 🌿'  },
+];
+
 const FURNITURE: FurnitureItem[] = [
   { id: 'bookshelf', x: 22,  y: LOWER_Y_TOP + 38,  width: 22, height: 110, floor: 'lower', action: 'reading',       label: 'Bookshelf' },
   { id: 'sofa',      x: 62,  y: LOWER_Y_BOT - 50,  width: 110, height: 40, floor: 'lower', action: 'watching_tv',   label: 'Sofa' },
@@ -24,13 +33,16 @@ const FURNITURE: FurnitureItem[] = [
   { id: 'shower',    x: 418, y: UPPER_Y_TOP + 14,  width: 78,  height: 125, floor: 'upper', action: 'showering',    label: 'Shower' },
   { id: 'toiletseat',x: 698, y: UPPER_Y_BOT - 58,  width: 40,  height: 52, floor: 'upper', action: null,            label: 'Toilet' },
   { id: 'sink',      x: 566, y: UPPER_Y_BOT - 32,  width: 52,  height: 20, floor: 'upper', action: null,            label: 'Sink' },
+  { id: 'exercise_mat', x: 195, y: LOWER_Y_BOT - 20, width: 55, height: 12, floor: 'lower', action: 'exercising',    label: 'Exercise Mat' },
+  { id: 'radio',        x: 22,  y: LOWER_Y_BOT - 52, width: 20, height: 18, floor: 'lower', action: 'playing_music', label: 'Radio' },
 ];
 
 const WALK_OFFSETS: Partial<Record<string, { dx: number }>> = {
-  bookshelf: { dx: 30 }, sofa:      { dx: 55 }, tv:        { dx: -30 },
-  stove:     { dx: 42 }, fridge:    { dx: -22 }, table:    { dx: 52 },
-  bed:       { dx: 67 }, computer:  { dx: 34 }, shower:    { dx: 39 },
-  toiletseat:{ dx: 20 }, sink:      { dx: 26 },
+  bookshelf:    { dx: 30 }, sofa:         { dx: 55 }, tv:        { dx: -30 },
+  stove:        { dx: 42 }, fridge:       { dx: -22 }, table:    { dx: 52 },
+  bed:          { dx: 67 }, computer:     { dx: 34 }, shower:    { dx: 39 },
+  toiletseat:   { dx: 20 }, sink:         { dx: 26 },
+  exercise_mat: { dx: 27 }, radio:        { dx: 10 },
 };
 
 export class GameScene extends Phaser.Scene {
@@ -44,6 +56,8 @@ export class GameScene extends Phaser.Scene {
   private aiActionTimer = 0;
   private currentAIFurniture: FurnitureItem | null = null;
   private tvOn = false;
+  private tvChannelIndex = 0;
+  private tvChannelTimer = 0;
   private monitorOn = false;
   private lastHourDrawn = -1;
 
@@ -175,6 +189,21 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.person.update(delta);
+
+    // TV channel rotation — switches every 30 real seconds while TV is on
+    if (this.tvOn) {
+      this.tvChannelTimer += delta;
+      if (this.tvChannelTimer >= 30000) {
+        this.tvChannelTimer = 0;
+        this.tvChannelIndex = (this.tvChannelIndex + 1) % TV_CHANNELS.length;
+        this.drawHouse();
+        if (this.person.behavior === 'watching_tv') {
+          this.person.showThought(TV_CHANNELS[this.tvChannelIndex].thought, 4000);
+        }
+      }
+    } else {
+      this.tvChannelTimer = 0;
+    }
 
     if (PORTRAIT) {
       const cam = this.cameras.main;
@@ -335,6 +364,9 @@ export class GameScene extends Phaser.Scene {
     this.drawKitchenCounter(g, 418, LOWER_Y_TOP + 62);
     this.drawFridge(g, 748, LOWER_Y_TOP + 22);
     this.drawKitchenTable(g, 568, LOWER_Y_BOT - 10);
+
+    this.drawExerciseMat(g, 195, LOWER_Y_BOT - 20);
+    this.drawRadio(g, 22, LOWER_Y_BOT - 52);
 
     this.drawRoomLabel(g, 'LIVING ROOM', 210, LOWER_Y_TOP + 10);
     this.drawRoomLabel(g, 'KITCHEN',     588, LOWER_Y_TOP + 10);
@@ -535,13 +567,14 @@ export class GameScene extends Phaser.Scene {
     // Casing
     g.fillStyle(C.tvCase, 1);
     g.fillRect(x - 26, y - 2, 64, h + 4);
-    // Screen
-    const screenCol = this.tvOn ? C.tvScreenOn : C.tvScreen;
+    // Screen — colour depends on current channel
+    const ch = TV_CHANNELS[this.tvChannelIndex];
+    const screenCol = this.tvOn ? ch.screenColor : C.tvScreen;
     g.fillStyle(screenCol, 1);
     g.fillRect(x - 22, y + 4, 56, h - 10);
     if (this.tvOn) {
       // TV glow
-      g.fillStyle(C.tvGlowOn, 0.15);
+      g.fillStyle(ch.glowColor, 0.15);
       g.fillCircle(x + 6, y + 30, 35);
       // Scanlines on screen
       g.fillStyle(0x000000, 0.15);
@@ -779,6 +812,54 @@ export class GameScene extends Phaser.Scene {
     g.fillRect(x, y, 52, 52);
     g.fillStyle(0xffffff, 0.25);
     g.fillRect(x + 5, y + 5, 6, 42);
+  }
+
+  private drawExerciseMat(g: Phaser.GameObjects.Graphics, x: number, y: number): void {
+    // Mat body — teal with a lighter centre stripe
+    g.fillStyle(0x2a7a88, 1);
+    g.fillRect(x, y, 55, 12);
+    g.fillStyle(0x3d9aaa, 0.6);
+    g.fillRect(x + 4, y + 3, 47, 4);
+    // Border
+    g.lineStyle(1, 0x1a5566, 1);
+    g.strokeRect(x, y, 55, 12);
+    // End-grip texture lines
+    g.fillStyle(0x1a5566, 0.5);
+    for (let i = 0; i < 4; i++) {
+      g.fillRect(x + 2 + i * 2, y + 1, 1, 10);
+      g.fillRect(x + 49 - i * 2, y + 1, 1, 10);
+    }
+  }
+
+  private drawRadio(g: Phaser.GameObjects.Graphics, x: number, y: number): void {
+    // Small side-table
+    g.fillStyle(C.shelfWood, 1);
+    g.fillRect(x - 2, y + 18, 24, 5);   // table top
+    g.fillRect(x,     y + 23, 4, 12);   // left leg
+    g.fillRect(x + 16, y + 23, 4, 12);  // right leg
+
+    // Cabinet body
+    g.fillStyle(0x1a1008, 1);
+    g.fillRect(x, y, 20, 18);
+    // Speaker grille
+    g.fillStyle(0x332200, 1);
+    g.fillRect(x + 2, y + 3, 11, 12);
+    // Speaker dots
+    g.fillStyle(0x110800, 1);
+    for (let row = 0; row < 3; row++) {
+      for (let col = 0; col < 3; col++) {
+        g.fillRect(x + 4 + col * 3, y + 5 + row * 3, 1, 1);
+      }
+    }
+    // Tuner strip
+    g.fillStyle(0x444422, 1);
+    g.fillRect(x + 14, y + 3, 4, 7);
+    g.fillStyle(0xaaaa44, 0.6);
+    g.fillRect(x + 15, y + 4, 2, 2);   // tuner indicator
+    // Antenna
+    g.fillStyle(0x888866, 1);
+    g.fillRect(x + 17, y - 10, 1, 12);
+    g.fillRect(x + 17, y - 10, 4, 1);  // small cross-bar
   }
 
   private drawScanlines(): void {

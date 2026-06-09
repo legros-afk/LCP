@@ -16,7 +16,9 @@ export type BehaviorState =
   | 'showering'
   | 'cooking'
   | 'greeting_player'
-  | 'chatting';
+  | 'chatting'
+  | 'exercising'
+  | 'playing_music';
 
 export type Floor = 'lower' | 'upper';
 

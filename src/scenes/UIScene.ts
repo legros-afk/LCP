@@ -26,6 +26,8 @@ const BEHAVIOR_LABELS: Record<string, string> = {
   cooking:        'cooking',
   greeting_player:'waving hello',
   chatting:       'chatting',
+  exercising:     'exercising',
+  playing_music:  'listening to music',
 };
 
 export class UIScene extends Phaser.Scene {

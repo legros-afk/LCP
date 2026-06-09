@@ -19,6 +19,8 @@ const RECOVERY: Partial<Record<BehaviorState, Partial<Needs>>> = {
   reading:         { happiness: 3 / 60 },
   greeting_player: { happiness: 10 / 60 },
   chatting:        { happiness: 8 / 60 },
+  exercising:      { happiness: 5 / 60, energy: 2 / 60 },
+  playing_music:   { happiness: 7 / 60 }, // best happiness activity
 };
 
 export function tickNeeds(needs: Needs, behavior: BehaviorState, dt: number): void {

@@ -11,18 +11,20 @@ export interface AITarget {
 
 // Real-time daily schedule — fires once when the hour changes
 const REAL_SCHEDULE: { hour: number; behavior: BehaviorState; furnitureId: string; thought?: string }[] = [
-  { hour: 7,  behavior: 'showering',       furnitureId: 'shower',   thought: 'Morning shower...' },
-  { hour: 8,  behavior: 'cooking',         furnitureId: 'stove',    thought: 'What\'s for breakfast?' },
-  { hour: 8,  behavior: 'eating',          furnitureId: 'table',    thought: 'Mmm, breakfast 🍳' },
-  { hour: 10, behavior: 'using_computer',  furnitureId: 'computer', thought: 'Let\'s see what\'s online...' },
-  { hour: 12, behavior: 'cooking',         furnitureId: 'stove',    thought: 'Time to cook lunch!' },
-  { hour: 12, behavior: 'eating',          furnitureId: 'table',    thought: 'Lunch time 🥘' },
-  { hour: 14, behavior: 'reading',         furnitureId: 'bookshelf', thought: 'A bit of reading...' },
-  { hour: 16, behavior: 'watching_tv',     furnitureId: 'tv',       thought: 'Afternoon TV 📺' },
-  { hour: 18, behavior: 'cooking',         furnitureId: 'stove',    thought: 'Dinner time!' },
-  { hour: 18, behavior: 'eating',          furnitureId: 'table',    thought: 'Dinner! 🍽' },
-  { hour: 20, behavior: 'using_computer',  furnitureId: 'computer', thought: 'Evening browsing...' },
-  { hour: 22, behavior: 'sleeping',        furnitureId: 'bed',      thought: 'Good night 💤' },
+  { hour: 7,  behavior: 'showering',       furnitureId: 'shower',       thought: 'Morning shower...' },
+  { hour: 8,  behavior: 'cooking',         furnitureId: 'stove',        thought: 'What\'s for breakfast?' },
+  { hour: 8,  behavior: 'eating',          furnitureId: 'table',        thought: 'Mmm, breakfast 🍳' },
+  { hour: 9,  behavior: 'exercising',      furnitureId: 'exercise_mat', thought: 'Morning workout! 💪' },
+  { hour: 10, behavior: 'using_computer',  furnitureId: 'computer',     thought: 'Let\'s see what\'s online...' },
+  { hour: 12, behavior: 'cooking',         furnitureId: 'stove',        thought: 'Time to cook lunch!' },
+  { hour: 12, behavior: 'eating',          furnitureId: 'table',        thought: 'Lunch time 🥘' },
+  { hour: 14, behavior: 'reading',         furnitureId: 'bookshelf',    thought: 'A bit of reading...' },
+  { hour: 16, behavior: 'watching_tv',     furnitureId: 'tv',           thought: 'Afternoon TV 📺' },
+  { hour: 18, behavior: 'cooking',         furnitureId: 'stove',        thought: 'Dinner time!' },
+  { hour: 18, behavior: 'eating',          furnitureId: 'table',        thought: 'Dinner! 🍽' },
+  { hour: 19, behavior: 'playing_music',   furnitureId: 'radio',        thought: '♪ Music time 🎵' },
+  { hour: 20, behavior: 'using_computer',  furnitureId: 'computer',     thought: 'Evening browsing...' },
+  { hour: 22, behavior: 'sleeping',        furnitureId: 'bed',          thought: 'Good night 💤' },
   { hour: 23, behavior: 'sleeping',        furnitureId: 'bed' },
   { hour:  0, behavior: 'sleeping',        furnitureId: 'bed' },
   { hour:  1, behavior: 'sleeping',        furnitureId: 'bed' },
@@ -30,7 +32,7 @@ const REAL_SCHEDULE: { hour: number; behavior: BehaviorState; furnitureId: strin
   { hour:  3, behavior: 'sleeping',        furnitureId: 'bed' },
   { hour:  4, behavior: 'sleeping',        furnitureId: 'bed' },
   { hour:  5, behavior: 'sleeping',        furnitureId: 'bed' },
-  { hour:  6, behavior: 'sleeping',        furnitureId: 'bed',      thought: 'Just five more minutes...' },
+  { hour:  6, behavior: 'sleeping',        furnitureId: 'bed',          thought: 'Just five more minutes...' },
 ];
 
 const NEED_TARGETS: Record<string, { id: string; behavior: BehaviorState; thought: string }> = {
@@ -59,6 +61,8 @@ const BEHAVIOR_DURATIONS: Record<BehaviorState, number> = {
   cooking:         9000,
   greeting_player: 3000,
   chatting:        5000,
+  exercising:      15000,
+  playing_music:   20000,
 };
 
 export class BehaviorAI {
