@@ -44,6 +44,8 @@ export class IntroScene extends Phaser.Scene {
   private cursorVisible = true;
   private inputReady = false;
   private lineTexts: Phaser.GameObjects.Text[] = [];
+  private mobileInputEl: HTMLInputElement | null = null;
+  private mobileConfirmBtn: HTMLButtonElement | null = null;
 
   constructor() { super('IntroScene'); }
 
@@ -136,6 +138,52 @@ export class IntroScene extends Phaser.Scene {
     });
 
     this.inputReady = true;
+
+    // On touch devices the keyboard won't appear without a focused real input
+    if ('ontouchstart' in window) {
+      const inp = document.createElement('input');
+      inp.type = 'text';
+      inp.maxLength = 18;
+      inp.autocomplete = 'off';
+      inp.spellcheck = false;
+      inp.style.cssText = [
+        'position:fixed', 'bottom:80px', 'left:50%', 'transform:translateX(-50%)',
+        'width:280px', 'padding:12px 16px',
+        'background:#000', 'border:1px solid #00ff41',
+        'color:#00ff41', 'font-family:monospace', 'font-size:16px',
+        'outline:none', 'z-index:500', 'text-transform:uppercase',
+        'letter-spacing:2px',
+      ].join(';');
+      inp.placeholder = 'TYPE NAME HERE';
+      document.body.appendChild(inp);
+      this.mobileInputEl = inp;
+
+      const btn = document.createElement('button');
+      btn.textContent = 'CONFIRM →';
+      btn.style.cssText = [
+        'position:fixed', 'bottom:24px', 'left:50%', 'transform:translateX(-50%)',
+        'padding:12px 36px', 'background:none',
+        'border:1px solid #00ff41', 'color:#00ff41',
+        'font-family:monospace', 'font-size:14px', 'letter-spacing:2px',
+        'z-index:500', 'cursor:pointer', 'touch-action:manipulation',
+      ].join(';');
+      document.body.appendChild(btn);
+      this.mobileConfirmBtn = btn;
+
+      inp.addEventListener('input', () => {
+        this.nameBuffer = inp.value.toUpperCase().slice(0, 18);
+        inp.value = this.nameBuffer;
+        this.updateNameDisplay();
+      });
+
+      const submit = () => {
+        if (this.nameBuffer.trim().length > 0) this.confirmName();
+      };
+      inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') submit(); });
+      btn.addEventListener('click', submit);
+
+      inp.focus();
+    }
   }
 
   private updateNameDisplay(): void {
@@ -146,6 +194,8 @@ export class IntroScene extends Phaser.Scene {
 
   private confirmName(): void {
     this.inputReady = false;
+    if (this.mobileInputEl)    { this.mobileInputEl.remove();    this.mobileInputEl = null; }
+    if (this.mobileConfirmBtn) { this.mobileConfirmBtn.remove(); this.mobileConfirmBtn = null; }
     const name = this.nameBuffer.trim();
     localStorage.setItem('lcp_name', name);
     this.game.registry.set('personName', name);

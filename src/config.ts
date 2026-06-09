@@ -29,7 +29,7 @@ export const CHAR_H = 18 * PX;   // 54 screen px
 export const CHAR_SPEED = 85;
 
 // UI
-export const UI_Y = 508;
+export const UI_Y = 490;
 export const UI_H = H - UI_Y;
 
 // Time: use real clock — no acceleration constant needed

@@ -2,38 +2,376 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
   <title>Little Computer People</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      touch-action: none;
+    }
     body {
       background: #0d1117;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      min-height: 100vh;
+      height: 100dvh;
       font-family: monospace;
     }
     #game-title {
-      color: #e8d5b7;
-      font-size: 14px;
-      letter-spacing: 4px;
-      text-transform: uppercase;
-      margin-bottom: 8px;
-      opacity: 0.7;
+      display: none;
+    }
+    #game-container {
+      width: 100vw;
+      height: 100dvh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
     #game-container canvas {
       display: block;
       image-rendering: pixelated;
       image-rendering: crisp-edges;
+      touch-action: none;
+    }
+
+    /* Portrait warning overlay */
+    #portrait-warning {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      background: #0d1117;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 32px;
+      padding: 40px 24px;
+    }
+    #portrait-warning.visible {
+      display: flex;
+    }
+    #portrait-warning .rotate-icon {
+      font-size: 64px;
+      animation: rotate-hint 2s ease-in-out infinite;
+    }
+    @keyframes rotate-hint {
+      0%   { transform: rotate(0deg);   opacity: 1; }
+      40%  { transform: rotate(90deg);  opacity: 1; }
+      60%  { transform: rotate(90deg);  opacity: 0.6; }
+      100% { transform: rotate(90deg);  opacity: 1; }
+    }
+    #portrait-warning .title {
+      color: #e8d5b7;
+      font-size: 13px;
+      letter-spacing: 4px;
+      text-transform: uppercase;
+      opacity: 0.7;
+    }
+    #portrait-warning .message {
+      color: #bbccdd;
+      font-size: 14px;
+      text-align: center;
+      line-height: 1.8;
+      max-width: 280px;
+    }
+    #portrait-warning .message span {
+      color: #556677;
+      font-size: 12px;
+      display: block;
+      margin-top: 6px;
+    }
+    #portrait-dismiss {
+      margin-top: 8px;
+      background: none;
+      border: 1px solid #1a3344;
+      color: #556677;
+      font-family: monospace;
+      font-size: 12px;
+      padding: 10px 24px;
+      cursor: pointer;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      touch-action: manipulation;
+    }
+    #portrait-dismiss:active {
+      color: #bbccdd;
+      border-color: #2a4a5a;
+    }
+
+    /* ── Portrait in-game UI overlay ──────────────────────────── */
+    #portrait-ui {
+      display: none;
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      z-index: 100;
+      background: rgba(0, 10, 20, 0.97);
+      border-top: 2px solid #1a3344;
+      padding: 8px 12px 10px;
+      font-family: monospace;
+      touch-action: manipulation;
+    }
+    #portrait-ui.active { display: block; }
+
+    .pu-bars {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 5px 12px;
+      margin-bottom: 8px;
+    }
+    .pu-bar-item {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .pu-bar-label {
+      color: #445566;
+      font-size: 10px;
+      width: 30px;
+      flex-shrink: 0;
+      letter-spacing: 0.5px;
+    }
+    .pu-bar-track {
+      flex: 1;
+      height: 8px;
+      background: #0a1a24;
+      border: 1px solid #1a3344;
+      overflow: hidden;
+    }
+    .pu-bar-fill {
+      height: 100%;
+      width: 0%;
+      transition: width 0.4s ease;
+    }
+    .pu-bar-val {
+      color: #334455;
+      font-size: 10px;
+      width: 22px;
+      text-align: right;
+      flex-shrink: 0;
+    }
+
+    .pu-controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .pu-time {
+      color: #e8d5b7;
+      font-size: 18px;
+      min-width: 52px;
+      flex-shrink: 0;
+    }
+    .pu-btn {
+      flex: 1;
+      height: 36px;
+      background: #0a1a24;
+      border: 1px solid #1a3344;
+      color: #aabbcc;
+      font-family: monospace;
+      font-size: 12px;
+      letter-spacing: 1px;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+    .pu-btn:active { background: #1a2a34; color: #cce0ee; }
+    .pu-floor {
+      flex-shrink: 0;
+      height: 36px;
+      padding: 0 10px;
+      background: none;
+      border: 1px solid #1a3344;
+      color: #556677;
+      font-family: monospace;
+      font-size: 11px;
+      cursor: pointer;
+      touch-action: manipulation;
+      white-space: nowrap;
+    }
+    .pu-floor:active { color: #aabbcc; border-color: #2a4a5a; }
+
+    #pu-chat-area {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    #pu-chat-input {
+      flex: 1;
+      height: 36px;
+      padding: 0 10px;
+      background: #0a1a24;
+      border: 1px solid #2a4a5a;
+      color: #cce0ee;
+      font-family: monospace;
+      font-size: 14px;
+      outline: none;
+    }
+    #pu-chat-send {
+      height: 36px;
+      padding: 0 14px;
+      background: #0a1a24;
+      border: 1px solid #2a4a5a;
+      color: #aabbcc;
+      font-family: monospace;
+      font-size: 16px;
+      cursor: pointer;
+      touch-action: manipulation;
     }
   </style>
 </head>
 <body>
+  <div id="portrait-warning" role="alert" aria-live="polite">
+    <div class="rotate-icon">📱</div>
+    <div class="title">Little Computer People</div>
+    <div class="message">
+      Rotate your device to landscape for the best experience.
+      <span>The house doesn't fit in portrait mode.</span>
+    </div>
+    <button id="portrait-dismiss">Play anyway</button>
+  </div>
+
+  <div id="portrait-ui">
+    <div class="pu-bars">
+      <div class="pu-bar-item">
+        <span class="pu-bar-label">HNG</span>
+        <div class="pu-bar-track"><div class="pu-bar-fill" id="pb-hunger" style="background:#cc6600"></div></div>
+        <span class="pu-bar-val" id="pv-hunger">-</span>
+      </div>
+      <div class="pu-bar-item">
+        <span class="pu-bar-label">HAP</span>
+        <div class="pu-bar-track"><div class="pu-bar-fill" id="pb-happiness" style="background:#ccaa00"></div></div>
+        <span class="pu-bar-val" id="pv-happiness">-</span>
+      </div>
+      <div class="pu-bar-item">
+        <span class="pu-bar-label">ENR</span>
+        <div class="pu-bar-track"><div class="pu-bar-fill" id="pb-energy" style="background:#22aa44"></div></div>
+        <span class="pu-bar-val" id="pv-energy">-</span>
+      </div>
+      <div class="pu-bar-item">
+        <span class="pu-bar-label">HYG</span>
+        <div class="pu-bar-track"><div class="pu-bar-fill" id="pb-hygiene" style="background:#2266aa"></div></div>
+        <span class="pu-bar-val" id="pv-hygiene">-</span>
+      </div>
+    </div>
+    <div class="pu-controls">
+      <span class="pu-time" id="pu-time">--:--</span>
+      <button class="pu-btn" id="pu-feed">FEED</button>
+      <button class="pu-btn" id="pu-chat">CHAT</button>
+      <button class="pu-btn" id="pu-bell">BELL</button>
+      <button class="pu-floor" id="pu-floor">▲ UP</button>
+    </div>
+    <div id="pu-chat-area">
+      <input type="text" id="pu-chat-input" placeholder="Say something..." maxlength="100" autocomplete="off">
+      <button id="pu-chat-send">→</button>
+    </div>
+  </div>
+
   <div id="game-title">Little Computer People</div>
   <div id="game-container"></div>
   <script src="https://accounts.google.com/gsi/client" async></script>
   <script type="module" src="/src/main.ts"></script>
+  <script>
+    /* ── Portrait in-game UI ───────────────────────────────────── */
+    (function () {
+      if (window.innerWidth >= window.innerHeight) return; // landscape: nothing to do
+
+      var portUi     = document.getElementById('portrait-ui');
+      var floorBtn   = document.getElementById('pu-floor');
+      var chatArea   = document.getElementById('pu-chat-area');
+      var chatInput  = document.getElementById('pu-chat-input');
+      var chatOpen   = false;
+      var curFloor   = 'lower';
+
+      var BAR_KEYS = ['hunger', 'happiness', 'energy', 'hygiene'];
+
+      window.addEventListener('lcp-state', function (e) {
+        var d = e.detail;
+
+        // Show the UI once the game has started
+        if (!portUi.classList.contains('active')) portUi.classList.add('active');
+
+        // Bars
+        BAR_KEYS.forEach(function (key) {
+          var val  = Math.floor(d.needs[key]);
+          var fill = document.getElementById('pb-' + key);
+          var valEl = document.getElementById('pv-' + key);
+          if (fill)  fill.style.width = d.needs[key] + '%';
+          if (valEl) valEl.textContent = val;
+        });
+
+        // Time
+        var h = String(d.hour).padStart(2, '0');
+        var m = String(d.minute).padStart(2, '0');
+        document.getElementById('pu-time').textContent = h + ':' + m;
+
+        // Floor button
+        curFloor = d.floor;
+        floorBtn.textContent = curFloor === 'lower' ? '▲ UP' : '▼ DOWN';
+      });
+
+      document.getElementById('pu-feed').addEventListener('click', function () {
+        if (window.__lcpTriggerFeed) window.__lcpTriggerFeed();
+      });
+
+      document.getElementById('pu-bell').addEventListener('click', function () {
+        if (window.__lcpTriggerBell) window.__lcpTriggerBell();
+      });
+
+      document.getElementById('pu-chat').addEventListener('click', function () {
+        chatOpen = !chatOpen;
+        chatArea.style.display = chatOpen ? 'flex' : 'none';
+        if (chatOpen) chatInput.focus();
+      });
+
+      floorBtn.addEventListener('click', function () {
+        if (window.__lcpGoFloor) window.__lcpGoFloor(curFloor === 'lower' ? 'upper' : 'lower');
+      });
+
+      function sendChat() {
+        if (chatInput.value.trim() && window.__lcpTriggerChat) window.__lcpTriggerChat();
+        chatInput.value = '';
+        chatOpen = false;
+        chatArea.style.display = 'none';
+      }
+      document.getElementById('pu-chat-send').addEventListener('click', sendChat);
+      chatInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') sendChat(); });
+    })();
+
+    /* ── Portrait rotation warning ─────────────────────────────── */
+    (function () {
+      const overlay  = document.getElementById('portrait-warning');
+      const dismiss  = document.getElementById('portrait-dismiss');
+      let dismissed  = false;
+
+      function isPortrait() {
+        return window.innerWidth < window.innerHeight;
+      }
+
+      function update() {
+        if (dismissed || !isPortrait()) {
+          overlay.classList.remove('visible');
+        } else {
+          overlay.classList.add('visible');
+        }
+      }
+
+      dismiss.addEventListener('click', function () {
+        dismissed = true;
+        overlay.classList.remove('visible');
+      });
+
+      // Re-show if user rotates back to portrait after dismissing
+      window.addEventListener('resize', function () {
+        if (!isPortrait()) dismissed = false;
+        update();
+      });
+
+      update();
+    })();
+  </script>
 </body>
 </html>

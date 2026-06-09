@@ -3,8 +3,9 @@ import {
   W, H, WALL, FLOOR_SEP_TOP, FLOOR_SEP_BOT,
   LOWER_Y_TOP, LOWER_Y_BOT, UPPER_Y_TOP, UPPER_Y_BOT,
   LEFT_ROOM_RIGHT, RIGHT_ROOM_LEFT, DIVIDER,
-  LOWER_WALK_Y, UPPER_WALK_Y, STAIRS_X, C,
+  LOWER_WALK_Y, UPPER_WALK_Y, STAIRS_X, UI_Y, C,
 } from '../config';
+import { PORTRAIT } from '../utils/orientation';
 import type { FurnitureItem, GameTimeData } from '../types';
 import { LittlePerson } from '../entities/LittlePerson';
 import { BehaviorAI } from '../systems/BehaviorAI';
@@ -59,12 +60,26 @@ export class GameScene extends Phaser.Scene {
     this.game.registry.set('gameScene', this);
     this.ai = new BehaviorAI(FURNITURE);
 
+    if (PORTRAIT) {
+      this.cameras.main.setZoom(2);
+      this.cameras.main.scrollX = 0;
+      this.cameras.main.scrollY = 300;
+      // Expose controls for the HTML portrait UI
+      (window as any).__lcpTriggerFeed  = () => this.triggerFeed();
+      (window as any).__lcpTriggerChat  = () => this.triggerChat();
+      (window as any).__lcpTriggerBell  = () => this.triggerBell();
+      (window as any).__lcpGoFloor = (floor: 'upper' | 'lower') => {
+        const wy = floor === 'upper' ? UPPER_WALK_Y : LOWER_WALK_Y;
+        this.person.navigateTo(this.person.x, wy);
+      };
+    }
+
     calendarService.init();
     // Refresh calendar events every 10 minutes
     this.time.addEvent({ delay: 600_000, loop: true, callback: () => calendarService.fetchToday() });
 
     this.input.on('pointerdown', (ptr: Phaser.Input.Pointer) => {
-      if (ptr.y > 505) return;
+      if (ptr.y > UI_Y - 3) return;
       const tx = Phaser.Math.Clamp(ptr.x, WALL + 10, W - WALL - 10);
       const ty = ptr.y < (FLOOR_SEP_TOP + FLOOR_SEP_BOT) / 2 ? UPPER_WALK_Y : LOWER_WALK_Y;
       this.person.navigateTo(tx, ty);
@@ -79,6 +94,9 @@ export class GameScene extends Phaser.Scene {
   getGameTime() { return this.gameTime; }
   getBehavior() { return this.person.behavior; }
   getCalService() { return calendarService; }
+  getFloor(): 'upper' | 'lower' {
+    return this.person.y < (FLOOR_SEP_TOP + FLOOR_SEP_BOT) / 2 ? 'upper' : 'lower';
+  }
 
   update(_time: number, delta: number): void {
     this.syncRealTime();
@@ -157,6 +175,15 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.person.update(delta);
+
+    if (PORTRAIT) {
+      const cam = this.cameras.main;
+      // Camera follows person: X pan across the floor, Y snaps to current floor
+      const tx = Phaser.Math.Clamp(this.person.x - 200, 0, 400);
+      const ty = Phaser.Math.Clamp(this.person.y - 120, 0, 300);
+      cam.scrollX = Phaser.Math.Linear(cam.scrollX, tx, 0.06);
+      cam.scrollY = Phaser.Math.Linear(cam.scrollY, ty, 0.04);
+    }
   }
 
   private syncRealTime(): void {
