@@ -86,7 +86,7 @@ export class UIScene extends Phaser.Scene {
       .setOrigin(0, 0)
       .setInteractive({ useHandCursor: calAvail });
     this.calBtn = calBg;
-    const calLabel = calAvail ? '📅 Connect Calendar' : '📅 Calendar (n/a)';
+    const calLabel = calAvail ? '📅 Calendar…' : '📅 Calendar (n/a)';
     this.calBtnText = this.add.text(508 + 80, UI_Y + 57, calLabel, {
       fontSize: '11px', color: '#aabbcc', fontFamily: 'monospace',
     }).setOrigin(0.5, 0.5);

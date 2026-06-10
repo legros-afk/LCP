@@ -24,6 +24,7 @@ const BALLOONS = [
 
 function extractBirthdayName(summary: string): string {
   return summary
+    .replace(/['’]s\b/gi, '')
     .replace(/\b(?:happy\s+)?birth(?:day)?\b/gi, '')
     .replace(/\banniversaire(?:\s+de)?\b/gi, '')
     .replace(/\bbday\b/gi, '')
